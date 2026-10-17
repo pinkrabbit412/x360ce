@@ -1525,6 +1525,40 @@ namespace x360ce.App.Controls
 		/// <summary>The device the Auto button's run is on, held here because the tab can be switched to another while it runs.</summary>
 		UserDevice springAutoDevice;
 
+		/// <summary>Reads cached FFB state without changing effects or starting calibration.</summary>
+		void ShowSpringDiagnostics()
+		{
+			var ud = GetSelectedDevice();
+			var driven = ud == null ? null : DInput.DeviceRouting.Current.ForceDevice(ud);
+			if (driven == null)
+			{
+				MessageBox.Show(this, "No selected force-feedback device.", "Wheel FFB diagnostics");
+				return;
+			}
+			var actuators = driven.DeviceObjects == null
+				? new DeviceObjectItem[0]
+				: driven.DeviceObjects.Where(x => x.Flags.HasFlag(SharpDX.DirectInput.DeviceObjectTypeFlags.ForceFeedbackActuator)).ToArray();
+			var ff = driven.FFState;
+			var axis = ff == null ? -1 : ff.SpringAxisIndex;
+			var source = driven.SourceState;
+			var position = source != null && axis >= 0 && axis < source.Axis.Length
+				? source.Axis[axis].ToString() : "unavailable";
+			var message = string.Format(
+				"Device: {0}{1}Online: {2}; Exclusive: {3}{1}" +
+				"FFB checked: {4}; Spring checked: {5}; Routed: {6}{1}" +
+				"Mapped actuators: {7}; Listed actuators: {8}; Mask: 0x{9:X}{1}" +
+				"Spring axis: {10}; Axis position: {11}{1}" +
+				"Actuator objects: {12}{1}Spring state: {13}{1}" +
+				"No motor commands or calibration were started by this diagnostic.",
+				driven.ProductName, Environment.NewLine, driven.IsOnline, driven.IsExclusiveMode,
+				ForceEnableCheckBox.Checked, ForceSpringEnableCheckBox.Checked, ForcesFromThisTab(ud),
+				driven.DiActuatorCount, actuators.Length, driven.DiActuatorMask,
+				axis, position,
+				string.Join("; ", actuators.Select(x => string.Format("{0}: offset={1}, index={2}", x.Name, x.Offset, x.DiIndex))),
+				ff == null ? "not created" : ff.SpringDiagnostics);
+			MessageBox.Show(this, message, "Wheel FFB diagnostics");
+		}
+
 		/// <summary>Starts the run that measures the wheel's friction and sets the centering spring's strength to beat it.</summary>
 		/// <remarks>
 		/// The engine drives the wheel and does the measuring; this side only starts it, watches it
@@ -1533,6 +1567,12 @@ namespace x360ce.App.Controls
 		/// </remarks>
 		void ForceSpringAutoButton_Click(object sender, EventArgs e)
 		{
+			// Holding Shift requests a passive snapshot; do not start motor calibration.
+			if ((Control.ModifierKeys & Keys.Shift) == Keys.Shift)
+			{
+				ShowSpringDiagnostics();
+				return;
+			}
 			var ud = GetSelectedDevice();
 			// The device whose motors the engine drives, which runs the measuring: a Raw Input device's DirectInput twin.
 			var driven = ud == null ? null : DInput.DeviceRouting.Current.ForceDevice(ud);

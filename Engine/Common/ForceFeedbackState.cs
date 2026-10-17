@@ -101,6 +101,20 @@ namespace x360ce.Engine
         /// <summary>The damping the device is holding right now, in its units, or nought when it holds none.</summary>
         public int DamperOnDevice { get { return effectD == null ? 0 : damperCoefficient; } }
         /// <summary>Which axis in the device state the spring's actuator moves, or -1 while unknown.</summary>
+        /// <summary>Read-only snapshot of cached centering state; no device calls.</summary>
+        public string SpringDiagnostics
+        {
+            get
+            {
+                return string.Format(
+                    "enabled={0}; strength={1}%; output={2}/10000; effect created={3}; " +
+                    "create refused={4}; parameters refused={5}; damper created={6}",
+                    springEnabled.HasValue && springEnabled.Value, springStrength, springMagnitude,
+                    effectS != null, springRefused, effectS != null && unsupported.Contains(effectS),
+                    effectD != null);
+            }
+        }
+
         public int SpringAxisIndex = -1;
 
         // Steering range, sent to the wheel itself rather than through DirectInput.
