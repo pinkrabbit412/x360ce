@@ -244,6 +244,44 @@ namespace x360ce.Engine
 					// Ignore exceptions from GetObjectInfoByOffset(int offset) method.
 				}
 			}
+			// Some wheels list a physical X-axis actuator but reject the offset-based
+			// object lookup. Recover only the unambiguous, standard single X actuator.
+			// This runs once when the device objects are first enumerated, not per poll.
+			RecoverSingleXAxisActuator(items, ref axisMask, ref actuatorMask, ref actuatorCount);
+		}
+
+		/// <summary>
+		/// Recovers an unindexed, single absolute X-axis FFB actuator when DirectInput
+		/// reports it in the object list but the offset lookup did not map the axis.
+		/// Does not infer other axes, overwrite an existing mapping, or guess with
+		/// multiple actuators.
+		/// </summary>
+		public static bool RecoverSingleXAxisActuator(DeviceObjectItem[] items, ref int axisMask, ref int actuatorMask, ref int actuatorCount)
+		{
+			if (items == null || actuatorCount != 0 || actuatorMask != 0 || (axisMask & 1) != 0)
+				return false;
+
+			DeviceObjectItem actuator = null;
+			foreach (var item in items)
+			{
+				if (item == null || !item.Flags.HasFlag(DeviceObjectTypeFlags.ForceFeedbackActuator))
+					continue;
+				if (actuator != null)
+					return false;
+				actuator = item;
+			}
+			if (actuator == null ||
+				actuator.Type != ObjectGuid.XAxis ||
+				actuator.Offset != (int)JoystickOffset.X ||
+				!actuator.Flags.HasFlag(DeviceObjectTypeFlags.AbsoluteAxis) ||
+				actuator.DiIndex >= 0)
+				return false;
+
+			actuator.DiIndex = 0;
+			axisMask |= 1;
+			actuatorMask |= 1;
+			actuatorCount = 1;
+			return true;
 		}
 
 		public static void GetMouseAxisMask(DeviceObjectItem[] items, Joystick device, out int axisMask, out int relativeMask)
