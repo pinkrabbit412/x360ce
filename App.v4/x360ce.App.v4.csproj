@@ -117,6 +117,7 @@
     <Compile Include="Common\DInput\DInputEventArgs.cs" />
     <Compile Include="Common\DInput\DInputException.cs" />
     <Compile Include="Common\DInput\DInputHelper.cs" />
+    <Compile Include="Common\DInput\WardogsHudSpeedReader.cs" />
     <Compile Include="Common\DInput\DInputHelper.Step1.UpdateDevices.cs" />
     <Compile Include="Common\DInput\DInputHelper.Step2.UpdateDiStates.cs" />
     <Compile Include="Common\DInput\DInputHelper.Step4.CombineXiStates.cs" />

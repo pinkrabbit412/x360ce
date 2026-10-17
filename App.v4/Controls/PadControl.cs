@@ -22,6 +22,96 @@ namespace x360ce.App.Controls
 {
 	public partial class PadControl : UserControl, IPadControl
 	{
+        // WARDOGS-specific HUD speed is opt-in and only drives the selected wheel.
+        CheckBox wardogsHudSpeedCheckBox;
+        Label wardogsHudSpeedLabel;
+        DInput.WardogsHudSpeedReader wardogsHudSpeedReader;
+
+        string WardogsHudSpeedSettingPath
+        {
+            get
+            {
+                return Path.Combine(EngineHelper.AppDataPath,
+                    "wardogs-hud-speed-controller-" + (int)MappedTo + ".txt");
+            }
+        }
+
+        void InitializeWardogsHudSpeed()
+        {
+            var line = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                WrapContents = true,
+                Margin = new Padding(4, 8, 4, 4)
+            };
+            wardogsHudSpeedCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "WARDOGS live speed (HUD OCR)",
+                Margin = new Padding(0, 0, 12, 2)
+            };
+            wardogsHudSpeedLabel = new Label
+            {
+                AutoSize = true,
+                Text = "Off. Uses the Speed slider.",
+                Margin = new Padding(0, 3, 0, 0)
+            };
+            line.Controls.Add(wardogsHudSpeedCheckBox);
+            line.Controls.Add(wardogsHudSpeedLabel);
+            WheelSettingsTableLayoutPanel.Controls.Add(line, 0, 10);
+            WheelSettingsTableLayoutPanel.SetColumnSpan(line, 4);
+            try
+            {
+                wardogsHudSpeedCheckBox.Checked = File.Exists(WardogsHudSpeedSettingPath) &&
+                    File.ReadAllText(WardogsHudSpeedSettingPath).Trim() == "1";
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            // Begin capture on the first UI refresh, after the selected wheel is available.
+            wardogsHudSpeedCheckBox.CheckedChanged += WardogsHudSpeedCheckBox_CheckedChanged;
+        }
+
+        void WardogsHudSpeedCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            bool enabled = wardogsHudSpeedCheckBox.Checked;
+            if (!enabled)
+            {
+                if (wardogsHudSpeedReader != null)
+                {
+                    wardogsHudSpeedReader.Dispose();
+                    wardogsHudSpeedReader = null;
+                }
+                wardogsHudSpeedLabel.Text = "Off. Uses the Speed slider.";
+            }
+            else if (wardogsHudSpeedReader == null)
+            {
+                wardogsHudSpeedReader = new DInput.WardogsHudSpeedReader();
+                UpdateWardogsHudSpeed();
+            }
+            try
+            {
+                File.WriteAllText(WardogsHudSpeedSettingPath, enabled ? "1" : "0");
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        void UpdateWardogsHudSpeed()
+        {
+            if (wardogsHudSpeedReader == null && wardogsHudSpeedCheckBox != null && wardogsHudSpeedCheckBox.Checked)
+                wardogsHudSpeedReader = new DInput.WardogsHudSpeedReader();
+            if (wardogsHudSpeedReader == null)
+                return;
+            var selected = GetSelectedDevice();
+            var driven = selected == null ? null : DInput.DeviceRouting.Current.ForceDevice(selected);
+            if (driven != null && !driven.IsOnline)
+                driven = null;
+            wardogsHudSpeedReader.SetDevice(driven);
+            if (PadTabControl.SelectedTab == WheelTabPage)
+                wardogsHudSpeedLabel.Text = wardogsHudSpeedReader.Status;
+        }
+
 
 		public PadControl(MapTo controllerIndex)
 		{
@@ -34,6 +124,7 @@ namespace x360ce.App.Controls
 
 			RemapName = RemapAllButton.Text;
 			MappedTo = controllerIndex;
+            InitializeWardogsHudSpeed();
 			_Imager = new PadControlImager();
 			_Imager.ImageControl = XboxImage;
 			XboxImage.InitializeImages(imageInfos, _Imager, controllerIndex);
@@ -79,6 +170,7 @@ namespace x360ce.App.Controls
 			UpdateControlFromDInput();
 			UpdateControlFromXInput();
 			UpdateSpringNote();
+            UpdateWardogsHudSpeed();
 			UpdateWheelChart();
 		}
 
@@ -1925,6 +2017,11 @@ namespace x360ce.App.Controls
 		{
 			if (disposing)
 			{
+                if (wardogsHudSpeedReader != null)
+                {
+                    wardogsHudSpeedReader.Dispose();
+                    wardogsHudSpeedReader = null;
+                }
 				// What these belong to lives as long as the program. Left subscribed, a page made and
 				// let go of went on handling every change afterwards, on whichever thread had made it.
 				Global.UpdateControlFromStates -= Global_UpdateControlFromStates;
