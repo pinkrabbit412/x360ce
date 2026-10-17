@@ -1536,9 +1536,15 @@ namespace x360ce.App.Controls
 			var ud = GetSelectedDevice();
 			// The device whose motors the engine drives, which runs the measuring: a Raw Input device's DirectInput twin.
 			var driven = ud == null ? null : DInput.DeviceRouting.Current.ForceDevice(ud);
-			if (driven == null || !ForceEnableCheckBox.Checked || !ForceSpringEnableCheckBox.Checked)
+			if (driven == null)
 			{
-				WheelDescriptionLabel.Text = "Auto needs a connected wheel with force feedback, with Enable and Centering Spring ticked.";
+				WheelDescriptionLabel.Text = "Auto cannot start: the selected controller mapping has no connected force-feedback device.";
+				return;
+			}
+			if (!ForceEnableCheckBox.Checked || !ForceSpringEnableCheckBox.Checked)
+			{
+				WheelDescriptionLabel.Text = string.Format("Auto cannot start: Force Feedback Enable = {0}, Centering spring = {1}. Both must be on.",
+					ForceEnableCheckBox.Checked, ForceSpringEnableCheckBox.Checked);
 				return;
 			}
 			// Some drivers expose a force-feedback actuator in the object list, but its DirectInput
