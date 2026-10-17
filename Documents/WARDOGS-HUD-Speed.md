@@ -48,3 +48,9 @@ This code was committed without executing a Windows build or a real-game OCR tes
 ## Grey speed digits fix (2026-10-17)
 
 The original recogniser demanded a pixel luminance of 170/255. In the supplied real gameplay screenshot showing `00 KM/H`, that threshold removed most of each zero, splitting the two glyphs into disconnected strokes. The recogniser now accepts grey glyphs from 70/255 upward, but still requires a locally dark outline (<45/255), and excludes the upper HUD caption/border from candidates. No other DirectInput/FFB behaviour was modified. The in-game capture and font matching still require verification on Windows; send a cropped HUD image if readings remain unreliable.
+
+## Multi-threshold OCR update (2026-10-17)
+
+The original recognition relied on glyph silhouettes generated with standard desktop fonts, which differ from the actual WARDOGS HUD typography at tiny sizes. The revised decoder uses three outline-preserving luminance thresholds, additional actual-HUD digit stroke templates for `0` and `2` (derived from the two supplied gameplay screenshots), a tolerant one-pixel match for other fonts/scales, multiple font sizes for `0-9`, and right-anchored two/three-digit layout validation. The OCR has no new runtime dependencies or extra windows/tools.
+
+Two screenshot-based glyph fixtures were used for algorithm-level testing with the recorded `00` and `02` shapes. The full Windows compilation and in-game capture test have not been performed here, and recognition of other digits is not yet guaranteed. If the HUD disappears or confidence is low, the manual Speed setting is used.

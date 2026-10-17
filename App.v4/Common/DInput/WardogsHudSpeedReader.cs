@@ -284,103 +284,128 @@ namespace x360ce.App.DInput
             if (image == null || image.Width < 25 || image.Height < 18)
                 return false;
 
+            // Input is already a tightly cropped speed field, not the full game.
+            // Use multiple local-contrast thresholds: the same HUD glyph can be
+            // pale grey on asphalt or bright white against a dark landscape.
             int w = image.Width, h = image.Height;
             var lum = new byte[w * h];
-            var mask = new bool[w * h];
-
-            // The speed glyphs are white with a black outline. Looking for a dark
-            // neighbour suppresses most bright terrain/sky behind the HUD.
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)
                 {
                     var c = image.GetPixel(x, y);
                     lum[y * w + x] = (byte)((c.R * 30 + c.G * 59 + c.B * 11) / 100);
                 }
-            // HUD speed glyphs in real gameplay are often grey (roughly 70-130
-            // luma), despite looking white on-screen. The old >=170 threshold
-            // split each outlined '0' into disconnected vertical fragments.
-            // Ignore the caption and horizontal border above the speed row.
-            for (int y = Math.Max(2, h * 29 / 100); y < h - 2; y++)
-                for (int x = 2; x < w - 2; x++)
-                {
-                    var n = y * w + x;
-                    if (lum[n] < 70)
-                        continue;
-                    int min = 255;
-                    for (int dy = -2; dy <= 2; dy += 2)
-                        for (int dx = -2; dx <= 2; dx += 2)
-                            min = Math.Min(min, lum[(y + dy) * w + x + dx]);
-                    // Insist on a dark local outline, so bright terrain or
-                    // sunlight alone cannot become a speed digit.
-                    mask[n] = min < 45;
-                }
 
+            int bestValue = -1;
+            double bestConfidence = 0;
+            // Each pass is an alternative, not a vote. Only the most reliable
+            // complete two/three-digit string is used.
+            for (int pass = 0; pass < 3; pass++)
+            {
+                int threshold = pass == 0 ? 70 : pass == 1 ? 100 : 135;
+                int dark = pass == 0 ? 45 : pass == 1 ? 70 : 95;
+                var mask = new bool[w * h];
+                for (int y = Math.Max(2, h * 29 / 100); y < h - 2; y++)
+                    for (int x = 2; x < w - 2; x++)
+                    {
+                        int n = y * w + x;
+                        if (lum[n] < threshold)
+                            continue;
+                        int minimum = 255;
+                        for (int dy = -2; dy <= 2; dy += 2)
+                            for (int dx = -2; dx <= 2; dx += 2)
+                                minimum = Math.Min(minimum, lum[(y + dy) * w + x + dx]);
+                        mask[n] = minimum < dark;
+                    }
+
+                int value;
+                double confidence;
+                if (TryReadMask(mask, w, h, out value, out confidence) && confidence > bestConfidence)
+                {
+                    bestValue = value;
+                    bestConfidence = confidence;
+                }
+            }
+            if (bestValue < 0 || bestConfidence < 0.61)
+                return false;
+            speed = bestValue;
+            return true;
+        }
+
+        static bool TryReadMask(bool[] mask, int w, int h, out int value, out double confidence)
+        {
+            value = -1;
+            confidence = 0;
             var components = Components(mask, w, h);
             var ranked = new List<Candidate>();
             foreach (var c in components)
             {
-                if (c.Width < 3 || c.Height < h * 0.28 || c.Height > h * 0.75 ||
-                    c.Width > c.Height * 1.4 || c.Width < c.Height * 0.22)
+                // Eliminate terrain, the outlined Korean "speed" caption and
+                // stray strokes outside the right-anchored numeric field.
+                if (c.Left < w * 0.20 || c.Right > w * 0.92 ||
+                    c.Width < 2 || c.Height < h * 0.25 || c.Height > h * 0.76 ||
+                    c.Width > c.Height * 1.25 || c.Width < c.Height * 0.12)
                     continue;
                 var bits = Normalize(mask, w, c);
-                int bestDigit = -1;
-                double best = 0;
+                int digit = -1;
+                double best = 0, next = 0;
                 foreach (var t in templates)
                 {
-                    double match = Similarity(bits, t.Pixels);
-                    if (match > best)
+                    double score = Similarity(bits, t.Pixels);
+                    if (score > best)
                     {
-                        best = match;
-                        bestDigit = t.Digit;
+                        if (t.Digit != digit)
+                            next = best;
+                        best = score;
+                        digit = t.Digit;
                     }
+                    else if (t.Digit != digit && score > next)
+                        next = score;
                 }
-                if (best < 0.56)
+                if (best < 0.58)
                     continue;
-                ranked.Add(new Candidate { Bounds = c, Digit = bestDigit, Score = best });
+                ranked.Add(new Candidate { Bounds = c, Digit = digit, Score = best });
             }
-            ranked.Sort((a, b) => a.Bounds.Left.CompareTo(b.Bounds.Left));
-            double bestScore = 0;
-            int bestSpeed = -1;
 
-            // Two or three digits form one row. Recognising an isolated bright object
-            // must never turn into a plausible vehicle speed.
+            ranked.Sort((a, b) => a.Bounds.Left.CompareTo(b.Bounds.Left));
+            // WARDOGS draws two (or three) characters immediately to the left
+            // of "KM/H"; this position survives dark and bright backgrounds.
             for (int i = 0; i < ranked.Count; i++)
                 for (int length = 2; length <= 3 && i + length <= ranked.Count; length++)
                 {
-                    int value = 0;
+                    int candidateValue = 0;
                     double score = 0;
                     bool aligned = true;
+                    var last = ranked[i + length - 1].Bounds;
+                    if (last.Right < w * 0.68 || last.Right > w * 0.91)
+                        continue;
                     for (int j = 0; j < length; j++)
                     {
                         var c = ranked[i + j];
-                        value = value * 10 + c.Digit;
+                        candidateValue = candidateValue * 10 + c.Digit;
                         score += c.Score;
                         if (j > 0)
                         {
                             var prev = ranked[i + j - 1].Bounds;
-                            var cur = c.Bounds;
-                            int gap = cur.Left - prev.Right;
-                            if (gap < 0 || gap > Math.Max(8, prev.Height * 0.7) ||
-                                Math.Abs(cur.Bottom - prev.Bottom) > Math.Max(3, prev.Height * 0.25))
+                            int gap = c.Bounds.Left - prev.Right;
+                            if (gap < 0 || gap > Math.Max(6, prev.Height * 0.55) ||
+                                Math.Abs(c.Bounds.Bottom - prev.Bottom) > Math.Max(4, prev.Height * 0.35))
                             {
                                 aligned = false;
                                 break;
                             }
                         }
                     }
-                    if (!aligned || value > 260)
+                    if (!aligned || candidateValue > 260)
                         continue;
                     score /= length;
-                    if (score > bestScore)
+                    if (score > confidence)
                     {
-                        bestScore = score;
-                        bestSpeed = value;
+                        confidence = score;
+                        value = candidateValue;
                     }
                 }
-            if (bestSpeed < 0 || bestScore < 0.62)
-                return false;
-            speed = bestSpeed;
-            return true;
+            return value >= 0;
         }
 
         sealed class Candidate
@@ -445,32 +470,96 @@ namespace x360ce.App.DInput
             return result;
         }
 
+        // Exact overlap is discriminating for the real-game shapes; the
+        // one-pixel tolerance helps a slightly different game scaling/font.
         static double Similarity(bool[] a, bool[] b)
         {
-            int overlap = 0, union = 0;
-            for (int i = 0; i < a.Length; i++)
+            int overlap = 0, union = 0, countA = 0, countB = 0;
+            int nearA = 0, nearB = 0;
+            for (int y = 0; y < GridH; y++)
+                for (int x = 0; x < GridW; x++)
+                {
+                    int n = y * GridW + x;
+                    if (a[n]) countA++;
+                    if (b[n]) countB++;
+                    if (a[n] && b[n]) overlap++;
+                    if (a[n] || b[n]) union++;
+                    if (a[n] && HasNearby(b, x, y)) nearA++;
+                    if (b[n] && HasNearby(a, x, y)) nearB++;
+                }
+            if (union == 0 || countA == 0 || countB == 0)
+                return 0;
+            double exact = overlap / (double)union;
+            double tolerant = (nearA / (double)countA + nearB / (double)countB) * 0.5;
+            return Math.Max(exact, tolerant * 0.79);
+        }
+
+        static bool HasNearby(bool[] data, int x, int y)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    int nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < GridW && ny >= 0 && ny < GridH && data[ny * GridW + nx])
+                        return true;
+                }
+            return false;
+        }
+
+        static void AddGameGlyph(List<Template> result, int digit, params string[] rows)
+        {
+            if (rows.Length != GridH)
+                throw new ArgumentException("Speed glyph height must be 16.");
+            var pixels = new bool[GridW * GridH];
+            for (int y = 0; y < GridH; y++)
             {
-                if (a[i] && b[i])
-                    overlap++;
-                if (a[i] || b[i])
-                    union++;
+                if (rows[y].Length != GridW)
+                    throw new ArgumentException("Speed glyph width must be 10.");
+                for (int x = 0; x < GridW; x++)
+                    pixels[y * GridW + x] = rows[y][x] == '#';
             }
-            return union == 0 ? 0 : overlap / (double)union;
+            result.Add(new Template { Digit = digit, Pixels = pixels });
         }
 
         static Template[] MakeTemplates()
         {
             var result = new List<Template>();
+            // Actual WARDOGS speed glyph silhouettes, normalized from the two
+            // user-supplied screenshots ("00" on dark ground; "02" on terrain).
+            // These are tiny stroke masks, NOT stored screenshots or textures.
+            AddGameGlyph(result, 0,
+                "#########.", "####.#####", "####.#####", "##....####",
+                "##....####", "##....####", "##....####", "##....####",
+                "##....####", "##....####", "##....####", "##....####",
+                "####..####", "#########.", "#########.", ".######...");
+            AddGameGlyph(result, 0,
+                "#######...", "##...####.", "##...####.", "##....###.",
+                "##....####", "##....####", "##....####", "##....####",
+                "##....####", "##....####", "##....####", "##....####",
+                "##...####.", "#########.", "#########.", ".######...");
+            AddGameGlyph(result, 0,
+                ".######...", ".###......", ".######...", "##########",
+                "##########", "####..####", "####..####", "####..####",
+                "####..####", "####..####", "####..####", "####..####",
+                "####.#####", "##########", ".########.", "..####....");
+            AddGameGlyph(result, 2,
+                "..#####...", "#########.", "##########", "####..####",
+                "####..####", "##....####", ".....#####", ".....####.",
+                "....#####.", "..#####...", ".#########", "#####.....",
+                "#####.....", "##########", "##########", "##########");
+            // The remaining digits use multiple Windows fonts and glyph sizes
+            // to handle HUD scaling better than a single 36px font.
             var fonts = new[] { "Arial", "Segoe UI", "Tahoma", "Bahnschrift", "Consolas", "Arial Narrow" };
             foreach (var fontName in fonts)
                 foreach (var fontStyle in new[] { FontStyle.Regular, FontStyle.Bold })
+                    foreach (var glyphSize in new[] { 16, 24, 36 })
                     for (int digit = 0; digit < 10; digit++)
                     {
                         try
                         {
                             using (var bitmap = new Bitmap(48, 60))
                             using (var g = Graphics.FromImage(bitmap))
-                            using (var font = new Font(fontName, 36, fontStyle, GraphicsUnit.Pixel))
+                            using (var font = new Font(fontName, glyphSize, fontStyle, GraphicsUnit.Pixel))
                             {
                                 g.Clear(Color.Black);
                                 g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
