@@ -1546,7 +1546,7 @@ namespace x360ce.App.Controls
 			var message = string.Format(
 				"Device: {0}{1}Online: {2}; Exclusive: {3}{1}" +
 				"FFB checked: {4}; Spring checked: {5}; Routed: {6}{1}" +
-				"Mapped actuators: {7}; Listed actuators: {8}; Mask: 0x{9:X}{1}" +
+				"Mapped actuators: {7}; Listed actuators: {8}; FFB mask: 0x{9:X}; Axis mask: 0x{14:X}{1}" +
 				"Spring axis: {10}; Axis position: {11}{1}" +
 				"Actuator objects: {12}{1}Spring state: {13}{1}" +
 				"No motor commands or calibration were started by this diagnostic.",
@@ -1554,8 +1554,8 @@ namespace x360ce.App.Controls
 				ForceEnableCheckBox.Checked, ForceSpringEnableCheckBox.Checked, ForcesFromThisTab(ud),
 				driven.DiActuatorCount, actuators.Length, driven.DiActuatorMask,
 				axis, position,
-				string.Join("; ", actuators.Select(x => string.Format("{0}: offset={1}, index={2}", x.Name, x.Offset, x.DiIndex))),
-				ff == null ? "not created" : ff.SpringDiagnostics);
+				string.Join("; ", actuators.Select(x => string.Format("{0}: offset={1}, index={2}, type={3}, flags={4}", x.Name, x.Offset, x.DiIndex, x.Type, x.Flags))),
+				ff == null ? "not created" : ff.SpringDiagnostics, driven.DiAxeMask);
 			MessageBox.Show(this, message, "Wheel FFB diagnostics");
 		}
 

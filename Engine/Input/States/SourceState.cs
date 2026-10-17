@@ -253,12 +253,13 @@ namespace x360ce.Engine
 		/// <summary>
 		/// Recovers an unindexed, single absolute X-axis FFB actuator when DirectInput
 		/// reports it in the object list but the offset lookup did not map the axis.
-		/// Does not infer other axes, overwrite an existing mapping, or guess with
-		/// multiple actuators.
+		/// Does not infer other axes, overwrite an indexed actuator, or guess with
+		/// multiple actuators. A successful ordinary X-axis lookup may have already set
+		/// axisMask bit zero without finding the FFB actuator, so that bit is not a blocker.
 		/// </summary>
 		public static bool RecoverSingleXAxisActuator(DeviceObjectItem[] items, ref int axisMask, ref int actuatorMask, ref int actuatorCount)
 		{
-			if (items == null || actuatorCount != 0 || actuatorMask != 0 || (axisMask & 1) != 0)
+			if (items == null || actuatorCount != 0 || actuatorMask != 0)
 				return false;
 
 			DeviceObjectItem actuator = null;

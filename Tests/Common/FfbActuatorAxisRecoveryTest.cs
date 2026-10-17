@@ -48,14 +48,30 @@ namespace x360ce.Tests
 		}
 
 		[TestMethod, TestCategory("force-feedback"), TestCategory("critical")]
-		public void Recovery_does_not_override_an_existing_axis_or_actuator_mapping()
+		public void Recovery_repairs_actuator_when_x_axis_is_already_present()
 		{
 			var x = XActuator();
+			var axes = 1; // Ordinary X input was found, but FFB lookup missed its actuator.
+			var mask = 0;
+			var count = 0;
+			Assert.IsTrue(SourceState.RecoverSingleXAxisActuator(new[] { x }, ref axes, ref mask, ref count));
+			Assert.AreEqual(1, axes);
+			Assert.AreEqual(1, mask);
+			Assert.AreEqual(1, count);
+			Assert.AreEqual(0, x.DiIndex);
+		}
+
+		[TestMethod, TestCategory("force-feedback"), TestCategory("critical")]
+		public void Recovery_does_not_override_an_indexed_actuator_or_existing_ffb_mapping()
+		{
+			var x = XActuator();
+			x.DiIndex = 0;
 			var axes = 1;
 			var mask = 0;
 			var count = 0;
 			Assert.IsFalse(SourceState.RecoverSingleXAxisActuator(new[] { x }, ref axes, ref mask, ref count));
-			Assert.AreEqual(-1, x.DiIndex);
+			Assert.AreEqual(0, x.DiIndex);
+			x.DiIndex = -1;
 			axes = 0;
 			mask = 1;
 			count = 1;
