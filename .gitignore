@@ -281,3 +281,4 @@ App.v4/Resources/x360ce.Engine*.dll
 # scratch file each configuration writes first.
 Native/x360ce/svnrev.h
 Native/x360ce/svnrev.h.*.new
+/x360ce
