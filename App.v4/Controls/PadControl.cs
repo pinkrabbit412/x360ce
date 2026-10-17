@@ -1536,9 +1536,23 @@ namespace x360ce.App.Controls
 			var ud = GetSelectedDevice();
 			// The device whose motors the engine drives, which runs the measuring: a Raw Input device's DirectInput twin.
 			var driven = ud == null ? null : DInput.DeviceRouting.Current.ForceDevice(ud);
-			if (driven == null || driven.DiActuatorCount == 0 || !ForceEnableCheckBox.Checked || !ForceSpringEnableCheckBox.Checked)
+			if (driven == null || !ForceEnableCheckBox.Checked || !ForceSpringEnableCheckBox.Checked)
 			{
 				WheelDescriptionLabel.Text = "Auto needs a connected wheel with force feedback, with Enable and Centering Spring ticked.";
+				return;
+			}
+			// Some drivers expose a force-feedback actuator in the object list, but its DirectInput
+			// axis-slot lookup fails. The UI still says "Actuators: 1", while DiActuatorCount stays
+			// zero and both Auto and the spring polling cannot use the missing axis index.
+			// Make the mismatch visible before changing how a live force-feedback device is driven.
+			if (driven.DiActuatorCount == 0)
+			{
+				var objects = driven.DeviceObjects;
+				var listed = objects == null ? 0 : objects.Count(x => x.Flags.HasFlag(SharpDX.DirectInput.DeviceObjectTypeFlags.ForceFeedbackActuator));
+				var indexed = objects == null ? 0 : objects.Count(x => x.Flags.HasFlag(SharpDX.DirectInput.DeviceObjectTypeFlags.ForceFeedbackActuator) && x.DiIndex >= 0);
+				WheelDescriptionLabel.Text = string.Format(
+					"Auto cannot start: mapped FFB actuator axes = {0}, FFB actuator objects = {1}, indexed actuator objects = {2}. Check the device axis-slot lookup.",
+					driven.DiActuatorCount, listed, indexed);
 				return;
 			}
 			// The engine drives the run only for a device the routing forces from this tab. A tab switched
