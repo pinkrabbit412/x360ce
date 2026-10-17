@@ -296,17 +296,23 @@ namespace x360ce.App.DInput
                     var c = image.GetPixel(x, y);
                     lum[y * w + x] = (byte)((c.R * 30 + c.G * 59 + c.B * 11) / 100);
                 }
-            for (int y = 2; y < h - 2; y++)
+            // HUD speed glyphs in real gameplay are often grey (roughly 70-130
+            // luma), despite looking white on-screen. The old >=170 threshold
+            // split each outlined '0' into disconnected vertical fragments.
+            // Ignore the caption and horizontal border above the speed row.
+            for (int y = Math.Max(2, h * 29 / 100); y < h - 2; y++)
                 for (int x = 2; x < w - 2; x++)
                 {
                     var n = y * w + x;
-                    if (lum[n] < 170)
+                    if (lum[n] < 70)
                         continue;
                     int min = 255;
                     for (int dy = -2; dy <= 2; dy += 2)
                         for (int dx = -2; dx <= 2; dx += 2)
                             min = Math.Min(min, lum[(y + dy) * w + x + dx]);
-                    mask[n] = min < 145;
+                    // Insist on a dark local outline, so bright terrain or
+                    // sunlight alone cannot become a speed digit.
+                    mask[n] = min < 45;
                 }
 
             var components = Components(mask, w, h);

@@ -44,3 +44,7 @@ $msbuild = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild
 ```
 
 This code was committed without executing a Windows build or a real-game OCR test. Please report any compiler errors or speed reading inaccuracies with screenshots so the region and recogniser can be calibrated.
+
+## Grey speed digits fix (2026-10-17)
+
+The original recogniser demanded a pixel luminance of 170/255. In the supplied real gameplay screenshot showing `00 KM/H`, that threshold removed most of each zero, splitting the two glyphs into disconnected strokes. The recogniser now accepts grey glyphs from 70/255 upward, but still requires a locally dark outline (<45/255), and excludes the upper HUD caption/border from candidates. No other DirectInput/FFB behaviour was modified. The in-game capture and font matching still require verification on Windows; send a cropped HUD image if readings remain unreliable.
